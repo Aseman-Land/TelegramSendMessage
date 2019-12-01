@@ -435,6 +435,9 @@ void ShareDialog::initTelegram(const QString &phoneNumber)
         if (mRegisterOnly)
             QCoreApplication::quit();
         getDialogs();
+        if (mDialogsOnly)
+            return;
+
         ui->stackedWidget->setCurrentIndex(3);
         waitLabelHide();
         if (mChannel.isEmpty())
@@ -526,6 +529,7 @@ void ShareDialog::getChannelDetails(const QString &name)
     }
     if (name.isEmpty())
     {
+        ui->stackedWidget->setCurrentIndex(4);
         on_nextBtn_clicked();
         return;
     }
@@ -799,28 +803,41 @@ void ShareDialog::getDialogs()
         {
             QVariantMap map;
             map["id"] = QString(dlg.peer().getHash().toHex());
-            map["dialog"] = dlg.toMap();
+
+            InputPeer inputPeer;
 
             switch(static_cast<qint32>(dlg.peer().classType()))
             {
             case Peer::typePeerChannel:
             {
                 Chat chat = chats.value(dlg.peer().channelId());
-                map["chat"] = chat.toMap();
+                inputPeer.setClassType(InputPeer::typeInputPeerChannel);
+                inputPeer.setChannelId(chat.id());
+                inputPeer.setAccessHash(chat.accessHash());
+
+                map["inputPeer"] = inputPeer.toMap();
                 map["title"] = chat.title();
             }
                 break;
             case Peer::typePeerChat:
             {
                 Chat chat = chats.value(dlg.peer().chatId());
-                map["chat"] = chat.toMap();
+                inputPeer.setClassType(InputPeer::typeInputPeerChat);
+                inputPeer.setChatId(chat.id());
+                inputPeer.setAccessHash(chat.accessHash());
+
+                map["inputPeer"] = inputPeer.toMap();
                 map["title"] = chat.title();
             }
                 break;
             case Peer::typePeerUser:
             {
                 User user = users.value(dlg.peer().userId());
-                map["user"] = user.toMap();
+                inputPeer.setClassType(InputPeer::typeInputPeerUser);
+                inputPeer.setChatId(user.id());
+                inputPeer.setAccessHash(user.accessHash());
+
+                map["inputPeer"] = inputPeer.toMap();
                 map["title"] = (user.firstName() + " " + user.lastName()).trimmed();
             }
                 break;
@@ -831,7 +848,10 @@ void ShareDialog::getDialogs()
 
         QFile file(mPrintDialogs);
         file.open(QFile::WriteOnly);
-        file.write(QJsonDocument::fromVariant(dialogsList).toJson());
+
+        QDataStream stream(&file);
+        stream << dialogsList;
+
         file.close();
         if (mDialogsOnly)
         {

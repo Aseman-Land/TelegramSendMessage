@@ -834,7 +834,7 @@ void ShareDialog::getDialogs()
             {
                 User user = users.value(dlg.peer().userId());
                 inputPeer.setClassType(InputPeer::typeInputPeerUser);
-                inputPeer.setChatId(user.id());
+                inputPeer.setUserId(user.id());
                 inputPeer.setAccessHash(user.accessHash());
 
                 map["inputPeer"] = inputPeer.toMap();

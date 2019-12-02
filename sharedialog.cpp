@@ -16,6 +16,7 @@
 #include <QNetworkProxy>
 #include <QDesktopServices>
 #include <QSettings>
+#include <QJsonDocument>
 
 #include <util/utils.h>
 
@@ -27,6 +28,9 @@ ShareDialog::ShareDialog(QWidget *parent) :
     mTg(Q_NULLPTR)
 {
     mHideAbout = false;
+    mSilent = false;
+    mDialogsOnly = false;
+    mRegisterOnly = false;
 
     ui->setupUi(this);
 
@@ -88,6 +92,9 @@ void ShareDialog::on_stackedWidget_currentChanged(int)
 
     case 1: // Code
     case 2: // Password
+        show();
+    [[clang::fallthrough]];
+
     case 3: // Channel
         ui->cancelBtn->hide();
         ui->sendBtn->hide();
@@ -149,6 +156,9 @@ void ShareDialog::on_actionBack_triggered()
 
 void ShareDialog::on_cancelBtn_clicked()
 {
+    mPhone.clear();
+    mChannel.clear();
+
     ui->stackedWidget->setCurrentIndex(4);
     initTelegram(ui->phoneLine->currentText());
 }
@@ -192,6 +202,8 @@ void ShareDialog::on_dialogBtn_clicked()
         Ui::Dialog *dialogUi = new Ui::Dialog;
         dialogUi->setupUi(dialog);
 
+        QVariantList dialogsList;
+
         QHash<qint32, User> users;
         for(const User &user: result.users())
             users[user.id()] = user;
@@ -201,6 +213,7 @@ void ShareDialog::on_dialogBtn_clicked()
         for(const Dialog &dlg: result.dialogs())
         {
             QListWidgetItem *item = new QListWidgetItem();
+
             switch(static_cast<qint32>(dlg.peer().classType()))
             {
             case Peer::typePeerChannel:
@@ -370,6 +383,9 @@ void ShareDialog::on_sendBtn_clicked()
     ui->progressLabel->setText(tr("Please wait..."));
 
     InputPeer peer;
+    if (mPeers.count())
+        peer = mPeers.takeFirst();
+
     if(mUser.classType() == User::typeUser)
     {
         peer.setClassType(InputPeer::typeInputPeerUser);
@@ -418,9 +434,18 @@ void ShareDialog::initTelegram(const QString &_phoneNumber)
                       ":/tg-server.pub");
 
     connect(mTg, &Telegram::authLoggedIn, this, [this](){
+        if (mRegisterOnly)
+            QCoreApplication::quit();
+        getDialogs();
+        if (mDialogsOnly)
+            return;
+
         ui->stackedWidget->setCurrentIndex(3);
         waitLabelHide();
-        on_dialogBtn_clicked();
+        if (mChannel.isEmpty())
+            on_dialogBtn_clicked();
+        else
+            on_nextBtn_clicked();
     });
     connect(mTg, &Telegram::authNeeded, this, [this](){
         ui->stackedWidget->setCurrentIndex(1);
@@ -504,6 +529,12 @@ void ShareDialog::getChannelDetails(const QString &name)
         ui->stackedWidget->setCurrentIndex(0);
         return;
     }
+    if (name.isEmpty())
+    {
+        ui->stackedWidget->setCurrentIndex(4);
+        on_nextBtn_clicked();
+        return;
+    }
 
     mUser = User::typeUserEmpty;
     mChat = Chat::typeChatEmpty;
@@ -548,6 +579,8 @@ void ShareDialog::getChannelDetails(const QString &name)
         }
 
         ui->stackedWidget->setCurrentIndex(4);
+        if (mBody.length())
+            on_nextBtn_clicked();
     });
 
 }
@@ -567,10 +600,56 @@ void ShareDialog::send(const InputPeer &peer, const QString &file)
             break;
 
         case UploadSendFile::typeUploadSendFileFinished:
-            qDebug() << "Finished";
-            finish();
+        {
+            if (mPeers.isEmpty())
+            {
+                qDebug() << "Finished";
+                finish();
+            }
+
+            bool forwarding = false;
+            for(const Update &upd: result.updates().updates())
+            {
+                if (upd.message().media().classType() == MessageMedia::typeMessageMediaDocument)
+                {
+                    MessageMedia med = upd.message().media();
+                    Document doc = med.document();
+
+                    InputDocument inputDoc(InputDocument::typeInputDocument);
+                    inputDoc.setId(doc.id());
+                    inputDoc.setAccessHash(doc.accessHash());
+
+                    InputMedia inputMedia(InputMedia::typeInputMediaDocument);
+                    inputMedia.setIdInputDocument(inputDoc);
+                    inputMedia.setCaption(med.caption());
+
+                    qDebug() << "Forwarding";
+                    forwarding = true;
+                    forwardNext(mPeers.takeFirst(), inputMedia);
+                }
+            }
+
+            if (!forwarding)
+            {
+                qDebug() << "Finished";
+                finish();
+            }
+        }
             break;
         }
+    });
+}
+
+void ShareDialog::forwardNext(const InputPeer &peer, const InputMedia &inputMedia)
+{
+    mTg->messagesSendMedia(false, false, false, peer, false, inputMedia, generateRandomId(), ReplyMarkup::null, [this, inputMedia](TG_MESSAGES_SEND_MEDIA_CALLBACK){
+        if (mPeers.isEmpty())
+        {
+            qDebug() << "Finished";
+            finish();
+        }
+        else
+            forwardNext(mPeers.takeFirst(), inputMedia);
     });
 }
 
@@ -614,6 +693,50 @@ void ShareDialog::waitLabelShow()
     ui->buttonsWidget->hide();
 }
 
+void ShareDialog::setRegisterOnly(bool registerOnly)
+{
+    mRegisterOnly = registerOnly;
+}
+
+void ShareDialog::setDialogsOnly(bool dialogsOnly)
+{
+    mDialogsOnly = dialogsOnly;
+}
+
+void ShareDialog::setPrintDialogs(const QString &printDialogs)
+{
+    mPrintDialogs = printDialogs;
+}
+
+void ShareDialog::setSilent(bool silent)
+{
+    mSilent = silent;
+}
+
+void ShareDialog::setChannel(const QString &channel)
+{
+    mChannel = channel;
+    if (channel.contains("{"))
+        mPeers << InputPeer::fromJson(channel);
+    else
+    if (channel.contains("/"))
+    {
+        QFile file(channel);
+        file.open(QFile::ReadOnly);
+
+        QVariantList list;
+        QDataStream stream(&file);
+        stream >> list;
+
+        file.close();
+
+        for (const QVariant &l: list)
+            mPeers << InputPeer::fromMap(l.toMap());
+    }
+    else
+        ui->channelName->setText(channel);
+}
+
 bool ShareDialog::getHideAbout() const
 {
     return mHideAbout;
@@ -626,6 +749,13 @@ void ShareDialog::setHideAbout(bool hideAbout)
         ui->toolBar->removeAction(ui->actionBack);
     else
         ui->toolBar->addAction(ui->actionAbout);
+}
+
+void ShareDialog::setPhone(const QString &phone)
+{
+    mPhone = phone;
+    ui->phoneLine->setEditText(mPhone);
+    on_nextBtn_clicked();
 }
 
 QString ShareDialog::getFile() const
@@ -652,6 +782,85 @@ void ShareDialog::setBody(const QString &body)
 void ShareDialog::finish()
 {
     ui->stackedWidget->setCurrentIndex(6);
+    if (mSilent)
+        QCoreApplication::quit();
+}
+
+void ShareDialog::getDialogs()
+{
+    if (mPrintDialogs.isEmpty())
+        return;
+
+    mTg->messagesGetDialogs(false, false, false, InputPeer::null, 100, [this](TG_MESSAGES_GET_DIALOGS_CALLBACK){
+
+        QVariantList dialogsList;
+
+        QHash<qint32, User> users;
+        for(const User &user: result.users())
+            users[user.id()] = user;
+        QHash<qint32, Chat> chats;
+        for(const Chat &chat: result.chats())
+            chats[chat.id()] = chat;
+        for(const Dialog &dlg: result.dialogs())
+        {
+            QVariantMap map;
+            map["id"] = QString(dlg.peer().getHash().toHex());
+
+            InputPeer inputPeer;
+
+            switch(static_cast<qint32>(dlg.peer().classType()))
+            {
+            case Peer::typePeerChannel:
+            {
+                Chat chat = chats.value(dlg.peer().channelId());
+                inputPeer.setClassType(InputPeer::typeInputPeerChannel);
+                inputPeer.setChannelId(chat.id());
+                inputPeer.setAccessHash(chat.accessHash());
+
+                map["inputPeer"] = inputPeer.toMap();
+                map["title"] = chat.title();
+            }
+                break;
+            case Peer::typePeerChat:
+            {
+                Chat chat = chats.value(dlg.peer().chatId());
+                inputPeer.setClassType(InputPeer::typeInputPeerChat);
+                inputPeer.setChatId(chat.id());
+                inputPeer.setAccessHash(chat.accessHash());
+
+                map["inputPeer"] = inputPeer.toMap();
+                map["title"] = chat.title();
+            }
+                break;
+            case Peer::typePeerUser:
+            {
+                User user = users.value(dlg.peer().userId());
+                inputPeer.setClassType(InputPeer::typeInputPeerUser);
+                inputPeer.setUserId(user.id());
+                inputPeer.setAccessHash(user.accessHash());
+
+                map["inputPeer"] = inputPeer.toMap();
+                map["title"] = (user.firstName() + " " + user.lastName()).trimmed();
+            }
+                break;
+            }
+
+            dialogsList << map;
+        }
+
+        QFile file(mPrintDialogs);
+        file.open(QFile::WriteOnly);
+
+        QDataStream stream(&file);
+        stream << dialogsList;
+
+        file.close();
+        if (mDialogsOnly)
+        {
+            QCoreApplication::quit();
+            return;
+        }
+    });
 }
 
 QString ShareDialog::homePath()

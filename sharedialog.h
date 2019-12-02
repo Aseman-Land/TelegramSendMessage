@@ -32,6 +32,12 @@ public:
 
     bool getHideAbout() const;
     void setHideAbout(bool hideAbout);
+    void setPhone(const QString &phone);
+    void setChannel(const QString &channel);
+    void setSilent(bool silent);
+    void setPrintDialogs(const QString &printDialogs);
+    void setDialogsOnly(bool dialogsOnly);
+    void setRegisterOnly(bool registerOnly);
 
     static qint64 generateRandomId();
 
@@ -55,7 +61,9 @@ private:
     void doCheckPassword(const QString &password);
     void getChannelDetails(const QString &name);
     void send(const InputPeer &peer, const QString &file);
+    void forwardNext(const InputPeer &peer, const InputMedia &media);
     void finish();
+    void getDialogs();
 
 private:
     QString fileExists(const QString &path);
@@ -70,10 +78,17 @@ private:
 
     User mUser;
     Chat mChat;
+    QList<InputPeer> mPeers;
 
     QString mBody;
     QString mFile;
+    QString mPhone;
+    QString mChannel;
     bool mHideAbout;
+    bool mSilent;
+    QString mPrintDialogs;
+    bool mDialogsOnly;
+    bool mRegisterOnly;
 
     QString mCurrentSalt;
     qint64 mTotalDownloaded;

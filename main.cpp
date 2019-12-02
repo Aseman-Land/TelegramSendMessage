@@ -18,7 +18,20 @@
 
 #include "sharedialog.h"
 #include <QApplication>
+#include <QDir>
 #include <QFileInfo>
+
+QString getCommandLineValue(const QString &switchStr)
+{
+    const QStringList args = QCoreApplication::instance()->arguments();
+    qint32 idx = args.indexOf(switchStr);
+    if (idx < 0)
+        return QString();
+    if (idx+1 >= args.count())
+        return QString("true");
+
+    return args.at(idx+1);
+}
 
 int main(int argc, char *argv[])
 {
@@ -37,20 +50,35 @@ int main(int argc, char *argv[])
         qDebug() << QString("Usage: " + QFileInfo(app.applicationFilePath()).fileName() + " --body \"message to send\" --file \"file to send\"").toStdString().c_str();
         return 0;
     }
+    bool phones = getCommandLineValue("--phones").length();
+    if (phones)
+    {
+        qDebug() << QDir(ShareDialog::homePath()).entryList(QDir::Dirs | QDir::NoDotAndDotDot).join("\n").toStdString().c_str();
+        return 0;
+    }
 
-    qint32 bodyIdx = app.arguments().indexOf("--body");
-    QString body = (bodyIdx>=0? app.arguments().at(bodyIdx+1) : "");
-
-    qint32 fileIdx = app.arguments().indexOf("--file");
-    QString file = (fileIdx>=0? app.arguments().at(fileIdx+1) : "");
-
-    bool hideAbout = (app.arguments().indexOf("--hide-about") != -1);
+    QString body = getCommandLineValue("--body");
+    QString file = getCommandLineValue("--file");
+    QString phone = getCommandLineValue("--phone");
+    QString channel = getCommandLineValue("--channel");
+    bool hideAbout = getCommandLineValue("--hide-about").length();
+    bool silent = getCommandLineValue("--silent").length();
+    QString printDialogs = getCommandLineValue("--printDialogs");
+    bool dialogsOnly = getCommandLineValue("--dialogsOnly").length();
+    bool registerOnly = getCommandLineValue("--registerOnly").length();
 
     ShareDialog w;
     w.setBody(body);
     w.setFile(file);
     w.setHideAbout(hideAbout);
-    w.show();
+    w.setPrintDialogs(printDialogs);
+    w.setDialogsOnly(dialogsOnly);
+    w.setRegisterOnly(registerOnly);
+    if (phone.length()) w.setPhone(phone);
+    if (channel.length()) w.setChannel(channel);
+    w.setSilent(silent && phone.length());
+
+    if (!silent || phone.isEmpty()) w.show();
 
     return app.exec();
 }

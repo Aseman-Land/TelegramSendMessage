@@ -33,8 +33,17 @@ QString getCommandLineValue(const QString &switchStr)
     return args.at(idx+1);
 }
 
+void myMessageOutput(QtMsgType, const QMessageLogContext &, const QString &msg)
+{
+    QByteArray localMsg = msg.toLocal8Bit().trimmed();
+    fprintf(stderr, "%s\n", localMsg.constData());
+}
+
 int main(int argc, char *argv[])
 {
+#ifdef Q_OS_WIN
+        qInstallMessageHandler(myMessageOutput);
+#endif
     QApplication app(argc, argv);
     app.setApplicationName("TgSendMessage");
     app.setOrganizationName("Aseman Team");

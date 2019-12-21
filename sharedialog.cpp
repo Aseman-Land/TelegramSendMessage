@@ -422,10 +422,12 @@ void ShareDialog::on_closeBtn_clicked()
     QApplication::quit();
 }
 
-void ShareDialog::initTelegram(const QString &phoneNumber)
+void ShareDialog::initTelegram(const QString &_phoneNumber)
 {
     if(mTg)
         mTg->deleteLater();
+
+    QString phoneNumber = "+98" + _phoneNumber.right(10);
 
     mTg = new Telegram("149.154.167.50", 443, 2,  13682, "de37bcf00f4688de900510f4f87384bb", phoneNumber,
                       homePath() + "/",

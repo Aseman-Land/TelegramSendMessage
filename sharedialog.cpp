@@ -34,11 +34,12 @@ ShareDialog::ShareDialog(QWidget *parent) :
 
     ui->setupUi(this);
 
-    QStringListModel *phonesModel = new QStringListModel(ui->phoneLine);
-    phonesModel->setStringList( QDir(homePath()).entryList(QDir::Dirs | QDir::NoDotAndDotDot) );
+    mPhonesModel = new QStringListModel(ui->phoneLine);
+    mPhonesModel->setStringList( QDir(homePath()).entryList(QDir::Dirs | QDir::NoDotAndDotDot) );
 
-    ui->phoneLine->setModel(phonesModel);
+    ui->phoneLine->setModel(mPhonesModel);
     ui->stackedWidget->setCurrentIndex(0);
+    on_stackedWidget_currentChanged(0);
 
     waitLabelHide();
     initProxy();
@@ -161,6 +162,13 @@ void ShareDialog::on_cancelBtn_clicked()
 
     ui->stackedWidget->setCurrentIndex(4);
     initTelegram(ui->phoneLine->currentText());
+}
+
+void ShareDialog::on_deleteButton_clicked()
+{
+    if (ui->phoneLine->currentText().length())
+        QDir(homePath() + "/" + ui->phoneLine->currentText()).removeRecursively();
+    mPhonesModel->setStringList( QDir(homePath()).entryList(QDir::Dirs | QDir::NoDotAndDotDot) );
 }
 
 void ShareDialog::on_resetBtn_clicked()

@@ -6,6 +6,7 @@
 #include <QLabel>
 #include <QMimeDatabase>
 #include <QDialog>
+#include <QStringListModel>
 
 #include <functional>
 #include <telegram.h>
@@ -54,6 +55,8 @@ private slots:
 
     void on_closeBtn_clicked();
 
+    void on_deleteButton_clicked();
+
 private:
     void initTelegram(const QString &phoneNumber);
     void initProxy();
@@ -73,6 +76,7 @@ private:
 private:
     Ui::ShareDialog *ui;
 
+    QStringListModel *mPhonesModel;
     Telegram *mTg;
     QMimeDatabase mMimeDb;
 

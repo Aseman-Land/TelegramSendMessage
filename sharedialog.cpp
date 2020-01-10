@@ -363,9 +363,7 @@ void ShareDialog::on_nextBtn_clicked()
         break;
 
     case 2: // Password
-        mTg->authCheckPassword(ui->passLine->text().toUtf8(), [this](TG_AUTH_CHECK_PASSWORD_CALLBACK){
-            qDebug() << error.errorCode << error.errorText;
-        });
+        doCheckPassword(ui->passLine->text());
         break;
 
     case 3: // Channel
